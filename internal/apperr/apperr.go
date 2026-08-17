@@ -10,4 +10,6 @@ var (
 	ErrSessionNotFound = errors.New("session not found or expired")
 
 	ErrMessageNotFoundOrForbidden = errors.New("message not found or access denied")
+
+	ErrInvalidCredentials = errors.New("invalid username or password")
 )

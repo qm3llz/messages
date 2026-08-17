@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+
 	"messages/internal/apperr"
 	"messages/internal/models"
 
@@ -65,6 +66,7 @@ func (r *ChatRepository) AddChatMember(ctx context.Context, chatID, userID, requ
 
 	return nil
 }
+
 func (r *ChatRepository) RemoveChatMember(ctx context.Context, chatID, userID, requesterID int) error {
 	sql := `DELETE FROM chat_members
 			WHERE chat_id = $1 AND user_id = $2 AND EXISTS (SELECT 1 FROM chats WHERE owner_id = $3 AND id = $1)`
@@ -91,7 +93,7 @@ func (r *ChatRepository) GetUserChats(ctx context.Context, userID int) ([]models
 	}
 	defer rows.Close()
 
-	var chats []models.Chat
+	chats := []models.Chat{}
 
 	for rows.Next() {
 		var chat models.Chat
@@ -110,10 +112,10 @@ func (r *ChatRepository) GetUserChats(ctx context.Context, userID int) ([]models
 func (r *ChatRepository) GetChatMessages(ctx context.Context, chatID, beforeID, requesterID, limit int) ([]models.Message, error) {
 	sql := `SELECT id, chat_id, user_id, text, created_at, edited_at
 			FROM messages
-			WHERE chat_id = $1 
+			WHERE chat_id = $1
 			  AND ($2 = 0 OR id < $2)
 			  AND EXISTS (SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $3)
-			ORDER BY id DESC 
+			ORDER BY id DESC
 			LIMIT $4`
 
 	rows, err := r.pool.Query(ctx, sql, chatID, beforeID, requesterID, limit)
@@ -122,7 +124,7 @@ func (r *ChatRepository) GetChatMessages(ctx context.Context, chatID, beforeID, 
 	}
 	defer rows.Close()
 
-	var messages []models.Message
+	messages := []models.Message{}
 
 	for rows.Next() {
 		var message models.Message
@@ -150,7 +152,7 @@ func (r *ChatRepository) GetChatMembers(ctx context.Context, chatID, requesterID
 	}
 	defer rows.Close()
 
-	var users []models.User
+	users := []models.User{}
 	for rows.Next() {
 		var user models.User
 		if err := rows.Scan(&user.ID, &user.Username); err != nil {
@@ -165,7 +167,7 @@ func (r *ChatRepository) GetChatMembers(ctx context.Context, chatID, requesterID
 }
 
 func (r *ChatRepository) CreateMessage(ctx context.Context, chatID, requesterID int, text string) error { // TODO: Возвращать сообщение при добавлении? для отправки по клиентам
-	sql := `INSERT INTO messages(chat_id, user_id, text)	
+	sql := `INSERT INTO messages(chat_id, user_id, text)
 			SELECT $1, $2, $3
 			WHERE EXISTS (SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2)`
 

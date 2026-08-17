@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"messages/internal/models"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type ChatRepo interface {
@@ -30,7 +33,7 @@ func NewChatHandler(chatRepo ChatRepo) *ChatHandler {
 func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	ownnerID, ok := UserIDFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusInternalServerError)
+		writeError(w, errNoUserInContext)
 		return
 	}
 
@@ -38,28 +41,58 @@ func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&chat)
 	chatID, err := h.chatRepo.CreateChat(r.Context(), ownnerID, chat.Name)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		writeError(w, err)
 		return
 	}
 
 	response := map[string]any{
-		"status":  "succes",
 		"chat_id": chatID,
-		"message": "chat created",
 	}
-
-	w.WriteHeader(http.StatusCreated)
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	writeJSON(w, http.StatusCreated, response)
 }
 
-func (h *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) { // TODO: проверить все
+	ownerID, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, errNoUserInContext)
+		return
+	}
+
+	chats, err := h.chatRepo.GetUserChats(r.Context(), ownerID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, chats)
 }
 
 func (h *ChatHandler) AddChatMember(w http.ResponseWriter, r *http.Request) {
+	chatID, err := strconv.Atoi(chi.URLParam(r, "chatID"))
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.Atoi(chi.URLParam(r, "userID"))
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	userReq, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, errNoUserInContext)
+		return
+	}
+
+	err = h.chatRepo.AddChatMember(r.Context(), chatID, userID, userReq)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *ChatHandler) GetUserChatMessage(w http.ResponseWriter, r *http.Request) {

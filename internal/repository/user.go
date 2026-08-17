@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+
 	"messages/internal/apperr"
 	"messages/internal/models"
 
@@ -20,7 +21,7 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 }
 
 func (r *UserRepository) CreateUser(ctx context.Context, username, passwordHash string) (int, error) { // TODO: Сделать возвращаемым не id, а models.User
-	sql := `INSERT INTO users(username, password_hash) 
+	sql := `INSERT INTO users(username, password_hash)
 			VALUES ($1, $2)
 			RETURNING id;`
 
@@ -50,7 +51,7 @@ func (r *UserRepository) DeleteUser(ctx context.Context, username string) error 
 func (r *UserRepository) GetUserByID(ctx context.Context, ID int) (*models.User, error) {
 	sql := `SELECT id, username, password_hash FROM users WHERE id = $1;`
 
-	var user models.User
+	user := models.User{}
 
 	err := r.pool.QueryRow(ctx, sql, ID).Scan(&user.ID, &user.Username, &user.PasswordHash)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -64,11 +65,11 @@ func (r *UserRepository) GetUserByID(ctx context.Context, ID int) (*models.User,
 }
 
 func (r *UserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
-	sql := `SELECT id, username, password_hash 
-			FROM users 
+	sql := `SELECT id, username, password_hash
+			FROM users
 			WHERE username = $1;`
 
-	var user models.User
+	user := models.User{}
 
 	err := r.pool.QueryRow(ctx, sql, username).Scan(&user.ID, &user.Username, &user.PasswordHash)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -82,8 +83,8 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 }
 
 func (r *UserRepository) UpdatePasswordHash(ctx context.Context, passwordHash, username string) error { // TODO: Возможно, тут тоже стоит возвращать models.User
-	sql := `UPDATE users 
-			SET password_hash = $1 
+	sql := `UPDATE users
+			SET password_hash = $1
 			WHERE username = $2;`
 
 	_, err := r.pool.Exec(ctx, sql, passwordHash, username)

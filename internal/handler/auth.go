@@ -7,11 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"messages/internal/apperr"
-	"messages/internal/models"
 	"net/http"
 	"time"
+
+	"messages/internal/models"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -74,8 +73,9 @@ func (h *AuthHandler) startSession(ctx context.Context, w http.ResponseWriter, u
 func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	var u models.UserLogin
 
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	err := json.NewDecoder(r.Body).Decode(&u)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 
@@ -90,83 +90,74 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, err)
 		return
 	}
 
 	userID, err := h.userRepo.CreateUser(r.Context(), u.Username, string(hashedPassword))
 	if err != nil {
-		if errors.Is(err, apperr.ErrUsernameTaken) {
-			http.Error(w, "username already taken", http.StatusConflict)
-			return
-		}
-		// TODO: Логи
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, err)
 		return
 	}
 
-	if err := h.startSession(r.Context(), w, userID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	err = h.startSession(r.Context(), w, userID)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 
-	answer := map[string]any{
+	response := map[string]any{
 		"message":  "success",
 		"userID":   userID,
 		"username": u.Username,
 	}
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(answer)
+	writeJSON(w, http.StatusCreated, response)
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var u models.UserLogin
 
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	err := json.NewDecoder(r.Body).Decode(&u)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 
 	user, err := h.userRepo.GetUserByUsername(r.Context(), u.Username)
 	if err != nil {
-		if errors.Is(err, apperr.ErrUserNotFound) {
-			http.Error(w, "invalid password or username", http.StatusUnauthorized)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		writeError(w, err)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(u.Password)); err != nil {
-		http.Error(w, "invalid password or username", http.StatusUnauthorized)
+		writeError(w, err)
 		return
 	}
 
 	if err := h.startSession(r.Context(), w, user.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, err)
 		return
 	}
 
-	answer := map[string]any{
+	response := map[string]any{
 		"message":  "authorized",
 		"userID":   user.ID,
 		"username": u.Username,
 	}
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(answer)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	session, err := r.Cookie("session")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeError(w, err)
 		return
 	}
 
 	hashedToken := hashToken(session.Value)
 	err = h.sessionRepo.DeleteSessionByToken(r.Context(), hashedToken)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, err)
 		return
 	}
 
@@ -180,12 +171,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	answer := map[string]any{
+	response := map[string]any{
 		"message": "logged out",
 	}
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(answer)
-	if err != nil {
-		// TODO: Логи
-	}
+	writeJSON(w, http.StatusOK, response)
 }

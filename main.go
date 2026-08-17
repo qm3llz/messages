@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"messages/internal/db"
 	"messages/internal/handler"
@@ -17,6 +19,8 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, relying on real env vars")
 	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	ctx := context.Background()
 
@@ -37,13 +41,10 @@ func main() {
 		r.Post("/signup", authHandler.SignUp)
 		r.Post("/login", authHandler.Login)
 
-		// Требует авторизации
 		r.Group(func(r chi.Router) {
 			r.Use(authHandler.RequireAuth)
-			// auth
 			r.Post("/logout", authHandler.Logout)
 
-			// chat
 			r.Route("/chats", func(r chi.Router) {
 				r.Post("/", chatHandler.CreateChat)
 				r.Get("/", chatHandler.GetChats)

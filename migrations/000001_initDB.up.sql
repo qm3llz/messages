@@ -27,15 +27,15 @@ CREATE TABLE messages
     chat_id INTEGER REFERENCES chats(id),
     user_id INTEGER REFERENCES users(id),
     text VARCHAR(512) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    edited_at TIMESTAMP DEFAULT NULL
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    edited_at TIMESTAMPTZ DEFAULT NULL
 );
 
 CREATE TABLE sessions
 (
     hashed_token TEXT PRIMARY KEY,
     user_id      INTEGER REFERENCES users (id),
-    expires_at   TIMESTAMP NOT NULL
+    expires_at   TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX idx_chat_members_chat_id ON chat_members (chat_id, user_id);
