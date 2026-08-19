@@ -111,7 +111,7 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 		"userID":   userID,
 		"username": u.Username,
 	}
-	writeJSON(w, http.StatusCreated, response)
+	writeResponse(w, http.StatusCreated, response)
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +144,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		"userID":   user.ID,
 		"username": u.Username,
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeResponse(w, http.StatusOK, response)
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -174,5 +174,5 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	response := map[string]any{
 		"message": "logged out",
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeResponse(w, http.StatusOK, response)
 }

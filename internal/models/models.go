@@ -2,6 +2,12 @@ package models
 
 import "time"
 
+type MessageFilter struct {
+	BeforeID *int
+	UserID   *int
+	Limit    int
+}
+
 type UserLogin struct {
 	Username string `json:"username"`
 	Password string `json:"password"`

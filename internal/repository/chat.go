@@ -109,16 +109,17 @@ func (r *ChatRepository) GetUserChats(ctx context.Context, userID int) ([]models
 	return chats, nil
 }
 
-func (r *ChatRepository) GetChatMessages(ctx context.Context, chatID, beforeID, requesterID, limit int) ([]models.Message, error) {
+func (r *ChatRepository) GetChatMessages(ctx context.Context, chatID, requesterID int, f models.MessageFilter) ([]models.Message, error) {
 	sql := `SELECT id, chat_id, user_id, text, created_at, edited_at
-			FROM messages
-			WHERE chat_id = $1
-			  AND ($2 = 0 OR id < $2)
-			  AND EXISTS (SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $3)
-			ORDER BY id DESC
-			LIMIT $4`
+	FROM messages
+	WHERE chat_id = $1
+  		AND EXISTS (SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2)
+    	AND ($3::int IS NULL OR id < $3)
+     	AND ($4::int IS NULL OR user_id = $4)
+	ORDER BY id DESC
+	LIMIT $5`
 
-	rows, err := r.pool.Query(ctx, sql, chatID, beforeID, requesterID, limit)
+	rows, err := r.pool.Query(ctx, sql, chatID, requesterID, f.BeforeID, f.UserID, f.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +189,21 @@ func (r *ChatRepository) UpdateMessage(ctx context.Context, newText string, mess
 			WHERE id = $2 AND user_id = $3`
 
 	tag, err := r.pool.Exec(ctx, sql, newText, messageID, requesterID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return apperr.ErrMessageNotFoundOrForbidden
+	}
+
+	return nil
+}
+
+func (r *ChatRepository) DeleteMessage(ctx context.Context, messageID, requesterID int) error {
+	sql := `DELETE messages
+		WHERE id = $1 AND user_id = $2` // TODO: Дописать, что бы владелец чата мог удалять
+
+	tag, err := r.pool.Exec(ctx, sql, messageID, requesterID)
 	if err != nil {
 		return err
 	}
