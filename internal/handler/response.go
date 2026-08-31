@@ -11,6 +11,7 @@ import (
 
 var errNoUserInContext = errors.New("userID missing from request context")
 var errInvalidParam = errors.New("invalid path parameter")
+var errInvalidBody = errors.New("invalid request body")
 
 type errorResponse struct {
 	Code    string `json:"code"`
@@ -28,8 +29,11 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, apperr.ErrUserNotFound) || errors.Is(err, apperr.ErrInvalidCredentials):
 		writeResponse(w, http.StatusUnauthorized, errorResponse{"pass_or_user_invalid", "invalid password or username"})
 
-	case errors.Is(err, apperr.ErrSessionNotFound):
+	case errors.Is(err, apperr.ErrSessionNotFound) || errors.Is(err, http.ErrNoCookie):
 		writeResponse(w, http.StatusUnauthorized, errorResponse{"unauthorized", "session not found, login again"})
+
+	case errors.Is(err, apperr.ErrNotChatMember) || errors.Is(err, http.ErrNoCookie):
+		writeResponse(w, http.StatusForbidden, errorResponse{"not_chat_member", "not a chat member"})
 
 	case errors.Is(err, apperr.ErrMessageNotFoundOrForbidden):
 		writeResponse(w, http.StatusNotFound, errorResponse{"message_not_found", "message not found or forbidden"})

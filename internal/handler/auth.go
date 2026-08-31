@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	"messages/internal/models"
@@ -34,6 +35,10 @@ type AuthHandler struct {
 
 func NewAuthHandler(userRepo userRepo, sessionRepository sessionRepo) *AuthHandler {
 	return &AuthHandler{userRepo: userRepo, sessionRepo: sessionRepository}
+}
+
+func cookieSecure() bool {
+	return os.Getenv("COOKIE_SECURE") == "true"
 }
 
 func hashToken(token string) string {
@@ -63,7 +68,7 @@ func (h *AuthHandler) startSession(ctx context.Context, w http.ResponseWriter, u
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 	})
 
@@ -80,11 +85,11 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(u.Username) < 5 || len(u.Username) > 64 {
-		http.Error(w, "The username must contain from 5 to 64 characters", http.StatusBadRequest)
+		writeResponse(w, http.StatusBadRequest, errorResponse{Code: "bad_username", Message: "The username must contain from 5 to 64 characters"})
 		return
 	}
 	if len(u.Password) < 8 || len(u.Password) > 72 {
-		http.Error(w, "The password must contain from 8 to 72 characters", http.StatusBadRequest)
+		writeResponse(w, http.StatusBadRequest, errorResponse{Code: "bad_password", Message: "The password must contain from 8 to 72 characters"})
 		return
 	}
 
@@ -167,7 +172,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 	})
 

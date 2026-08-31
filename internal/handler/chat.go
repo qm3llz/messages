@@ -3,10 +3,10 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"messages/internal/models"
 	"net/http"
 	"strconv"
-
-	"messages/internal/models"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -18,9 +18,13 @@ type ChatRepo interface {
 	GetUserChats(ctx context.Context, userID int) ([]models.Chat, error)
 	GetChatMessages(ctx context.Context, chatID, requesterID int, f models.MessageFilter) ([]models.Message, error)
 	GetChatMembers(ctx context.Context, chatID, requesterID int) ([]models.User, error)
-	CreateMessage(ctx context.Context, chatID, requesterID int, text string) error
-	UpdateMessage(ctx context.Context, newText string, messageID, requesterID int) error
-	DeleteMessage(ctx context.Context, messageID, requesterID int) error
+	CreateMessage(ctx context.Context, chatID, requesterID int, text string) (models.Message, error)
+	UpdateMessage(ctx context.Context, newText string, messageID, chatID, requesterID int) error
+	DeleteMessage(ctx context.Context, messageID, chatID, requesterID int) error
+}
+
+type createMessageRequest struct {
+	Text string `json:"text"`
 }
 
 type ChatHandler struct {
@@ -32,15 +36,25 @@ func NewChatHandler(chatRepo ChatRepo) *ChatHandler {
 }
 
 func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
-	ownnerID, ok := UserIDFromContext(r.Context())
+	ownerID, ok := UserIDFromContext(r.Context())
 	if !ok {
 		writeError(w, errNoUserInContext)
 		return
 	}
 
 	var chat models.Chat
-	json.NewDecoder(r.Body).Decode(&chat)
-	chatID, err := h.chatRepo.CreateChat(r.Context(), ownnerID, chat.Name)
+	err := json.NewDecoder(r.Body).Decode(&chat)
+	if err != nil {
+		writeError(w, errInvalidBody)
+		return
+	}
+
+	if len(chat.Name) > 64 {
+		writeResponse(w, http.StatusBadRequest, errorResponse{Code: "bad_chat_name", Message: "The chat name must contain to 64 characters"})
+		return
+	}
+
+	chatID, err := h.chatRepo.CreateChat(r.Context(), ownerID, chat.Name)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -123,7 +137,7 @@ func (h *ChatHandler) GetUserChats(w http.ResponseWriter, r *http.Request) { // 
 	writeResponse(w, http.StatusOK, chats)
 }
 
-func (h *ChatHandler) GetChatMessage(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) GetChatMessages(w http.ResponseWriter, r *http.Request) {
 	id, ok := UserIDFromContext(r.Context())
 	if !ok {
 		writeError(w, errNoUserInContext)
@@ -167,6 +181,11 @@ func (h *ChatHandler) GetChatMessage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, errInvalidParam)
 			return
 		}
+		if params.Limit < 20 {
+			params.Limit = 20
+		} else if params.Limit > 100 {
+			params.Limit = 100
+		}
 	}
 
 	messages, err := h.chatRepo.GetChatMessages(r.Context(), chatID, id, params)
@@ -179,13 +198,118 @@ func (h *ChatHandler) GetChatMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) GetChatMembers(w http.ResponseWriter, r *http.Request) {
+	id, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, errNoUserInContext)
+		return
+	}
+
+	chatID, err := strconv.Atoi(chi.URLParam(r, "chatID"))
+	if err != nil {
+		writeError(w, errInvalidParam)
+		return
+	}
+
+	users, err := h.chatRepo.GetChatMembers(r.Context(), chatID, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeResponse(w, http.StatusOK, users)
 }
 
 func (h *ChatHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, errNoUserInContext)
+		return
+	}
+
+	chatID, err := strconv.Atoi(chi.URLParam(r, "chatID"))
+	if err != nil {
+		writeError(w, errInvalidParam)
+		return
+	}
+
+	var req createMessageRequest
+	err = json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		writeError(w, errInvalidBody)
+		return
+	}
+
+	if len(strings.TrimSpace(req.Text)) < 1 {
+		writeResponse(w, http.StatusBadRequest, errorResponse{Code: "bad_message_text", Message: "message text must not be empty or contain only whitespace"})
+
+	}
+
+	msg, err := h.chatRepo.CreateMessage(r.Context(), chatID, id, strings.TrimSpace(req.Text))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeResponse(w, http.StatusCreated, msg)
 }
 
 func (h *ChatHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, errNoUserInContext)
+		return
+	}
+
+	var req createMessageRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		writeError(w, errInvalidBody)
+		return
+	}
+
+	chatID, err := strconv.Atoi(chi.URLParam(r, "chatID"))
+	if err != nil {
+		writeError(w, errInvalidParam)
+		return
+	}
+	messageID, err := strconv.Atoi(chi.URLParam(r, "messageID"))
+	if err != nil {
+		writeError(w, errInvalidParam)
+		return
+	}
+
+	err = h.chatRepo.UpdateMessage(r.Context(), req.Text, messageID, chatID, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, errNoUserInContext)
+		return
+	}
+
+	chatID, err := strconv.Atoi(chi.URLParam(r, "chatID"))
+	if err != nil {
+		writeError(w, errInvalidParam)
+		return
+	}
+	messageID, err := strconv.Atoi(chi.URLParam(r, "messageID"))
+	if err != nil {
+		writeError(w, errInvalidParam)
+		return
+	}
+
+	err = h.chatRepo.DeleteMessage(r.Context(), messageID, chatID, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

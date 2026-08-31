@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"messages/internal/apperr"
 	"messages/internal/models"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,6 +61,15 @@ func (r *ChatRepository) AddChatMember(ctx context.Context, chatID, userID, requ
 
 	tag, err := r.pool.Exec(ctx, sql, chatID, userID, requesterID)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				return apperr.ErrAlreadyMember
+			case "23503":
+				return apperr.ErrUserNotFound
+			}
+		}
 		return err
 	}
 	if tag.RowsAffected() == 0 {
@@ -167,28 +179,30 @@ func (r *ChatRepository) GetChatMembers(ctx context.Context, chatID, requesterID
 	return users, nil
 }
 
-func (r *ChatRepository) CreateMessage(ctx context.Context, chatID, requesterID int, text string) error { // TODO: Возвращать сообщение при добавлении? для отправки по клиентам
+func (r *ChatRepository) CreateMessage(ctx context.Context, chatID, requesterID int, text string) (models.Message, error) {
 	sql := `INSERT INTO messages(chat_id, user_id, text)
 			SELECT $1, $2, $3
-			WHERE EXISTS (SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2)`
+			WHERE EXISTS (SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2)
+			RETURNING id, chat_id, user_id, text, created_at, edited_at`
 
-	tag, err := r.pool.Exec(ctx, sql, chatID, requesterID, text)
+	var msg models.Message
+	err := r.pool.QueryRow(ctx, sql, chatID, requesterID, text).Scan(&msg.ID, &msg.ChatID, &msg.UserID, &msg.Text, &msg.CreatedAt, &msg.EditedAt)
 	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return apperr.ErrMessageNotFoundOrForbidden
+		if errors.Is(err, pgx.ErrNoRows) {
+			return msg, apperr.ErrNotChatMember
+		}
+		return msg, err
 	}
 
-	return nil
+	return msg, nil
 }
 
-func (r *ChatRepository) UpdateMessage(ctx context.Context, newText string, messageID, requesterID int) error { // TODO: Возвращать сообщение при добавлении? для отправки по клиентам
+func (r *ChatRepository) UpdateMessage(ctx context.Context, newText string, messageID, chatID, requesterID int) error { // TODO: Возвращать измененное сообщени, что бы отправлять клиентам (и сообщить юзеру время изменения)
 	sql := `UPDATE messages
 			SET text = $1, edited_at = now()
-			WHERE id = $2 AND user_id = $3`
+			WHERE id = $2 AND chat_id = $3 AND user_id = $4`
 
-	tag, err := r.pool.Exec(ctx, sql, newText, messageID, requesterID)
+	tag, err := r.pool.Exec(ctx, sql, newText, messageID, chatID, requesterID)
 	if err != nil {
 		return err
 	}
@@ -199,11 +213,11 @@ func (r *ChatRepository) UpdateMessage(ctx context.Context, newText string, mess
 	return nil
 }
 
-func (r *ChatRepository) DeleteMessage(ctx context.Context, messageID, requesterID int) error {
-	sql := `DELETE messages
-		WHERE id = $1 AND user_id = $2` // TODO: Дописать, что бы владелец чата мог удалять
+func (r *ChatRepository) DeleteMessage(ctx context.Context, messageID, chatID, requesterID int) error {
+	sql := `DELETE FROM messages
+		WHERE id = $1 AND chat_id = $2 AND user_id = $3` // TODO: Дописать, что бы владелец чата мог удалять
 
-	tag, err := r.pool.Exec(ctx, sql, messageID, requesterID)
+	tag, err := r.pool.Exec(ctx, sql, messageID, chatID, requesterID)
 	if err != nil {
 		return err
 	}

@@ -57,6 +57,7 @@ func main() {
 					})
 
 					r.Route("/messages", func(r chi.Router) {
+						r.Get("/", chatHandler.GetChatMessages)
 						r.Post("/", chatHandler.CreateMessage)
 						r.Delete("/{messageID}", chatHandler.DeleteMessage)
 						r.Patch("/{messageID}", chatHandler.UpdateMessage)

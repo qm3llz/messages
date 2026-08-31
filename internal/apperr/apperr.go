@@ -12,4 +12,8 @@ var (
 	ErrMessageNotFoundOrForbidden = errors.New("message not found or access denied")
 
 	ErrInvalidCredentials = errors.New("invalid username or password")
+
+	ErrAlreadyMember = errors.New("user is already a member of this chat")
+
+	ErrNotChatMember = errors.New("user is not a chat member")
 )
