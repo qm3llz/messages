@@ -3,10 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"messages/internal/models"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"messages/internal/models"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -19,7 +20,7 @@ type ChatRepo interface {
 	GetChatMessages(ctx context.Context, chatID, requesterID int, f models.MessageFilter) ([]models.Message, error)
 	GetChatMembers(ctx context.Context, chatID, requesterID int) ([]models.User, error)
 	CreateMessage(ctx context.Context, chatID, requesterID int, text string) (models.Message, error)
-	UpdateMessage(ctx context.Context, newText string, messageID, chatID, requesterID int) error
+	UpdateMessage(ctx context.Context, newText string, messageID, chatID, requesterID int) (models.Message, error)
 	DeleteMessage(ctx context.Context, messageID, chatID, requesterID int) error
 }
 
@@ -241,7 +242,6 @@ func (h *ChatHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 
 	if len(strings.TrimSpace(req.Text)) < 1 {
 		writeResponse(w, http.StatusBadRequest, errorResponse{Code: "bad_message_text", Message: "message text must not be empty or contain only whitespace"})
-
 	}
 
 	msg, err := h.chatRepo.CreateMessage(r.Context(), chatID, id, strings.TrimSpace(req.Text))
@@ -278,13 +278,13 @@ func (h *ChatHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.chatRepo.UpdateMessage(r.Context(), req.Text, messageID, chatID, id)
+	msg, err := h.chatRepo.UpdateMessage(r.Context(), req.Text, messageID, chatID, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	writeResponse(w, http.StatusOK, msg)
 }
 
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {

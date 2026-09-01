@@ -197,20 +197,22 @@ func (r *ChatRepository) CreateMessage(ctx context.Context, chatID, requesterID 
 	return msg, nil
 }
 
-func (r *ChatRepository) UpdateMessage(ctx context.Context, newText string, messageID, chatID, requesterID int) error { // TODO: Возвращать измененное сообщени, что бы отправлять клиентам (и сообщить юзеру время изменения)
+func (r *ChatRepository) UpdateMessage(ctx context.Context, newText string, messageID, chatID, requesterID int) (models.Message, error) {
 	sql := `UPDATE messages
 			SET text = $1, edited_at = now()
-			WHERE id = $2 AND chat_id = $3 AND user_id = $4`
+			WHERE id = $2 AND chat_id = $3 AND user_id = $4
+			RETURNING id, chat_id, user_id, text, created_at, edited_at`
 
-	tag, err := r.pool.Exec(ctx, sql, newText, messageID, chatID, requesterID)
+	var msg models.Message
+	err := r.pool.QueryRow(ctx, sql, newText, messageID, chatID, requesterID).Scan(&msg.ID, &msg.ChatID, &msg.UserID, &msg.Text, &msg.CreatedAt, &msg.EditedAt)
 	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return apperr.ErrMessageNotFoundOrForbidden
+		if errors.Is(err, pgx.ErrNoRows) {
+			return msg, apperr.ErrNotChatMember
+		}
+		return msg, err
 	}
 
-	return nil
+	return msg, nil
 }
 
 func (r *ChatRepository) DeleteMessage(ctx context.Context, messageID, chatID, requesterID int) error {
