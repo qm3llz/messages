@@ -10,6 +10,7 @@ import (
 	"messages/internal/db"
 	"messages/internal/handler"
 	"messages/internal/repository"
+	"messages/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
@@ -31,6 +32,10 @@ func main() {
 	sessionRepo := repository.NewSessionRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 
+	hub := ws.NewHub()
+	go hub.Run(ctx)
+
+	wsHandler := handler.NewWSHandler(hub)
 	authHandler := handler.NewAuthHandler(userRepo, sessionRepo)
 	chatHandler := handler.NewChatHandler(chatRepo)
 
@@ -44,6 +49,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(authHandler.RequireAuth)
 			r.Post("/logout", authHandler.Logout)
+			r.Get("/ws", wsHandler.ServeWS)
 
 			r.Route("/chats", func(r chi.Router) {
 				r.Post("/", chatHandler.CreateChat)

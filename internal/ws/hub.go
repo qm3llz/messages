@@ -23,6 +23,10 @@ func NewHub() *Hub {
 	}
 }
 
+func (h *Hub) Broadcast(ev Event) {
+	h.broadcast <- ev
+}
+
 func (h *Hub) Run(ctx context.Context) {
 	for {
 		select {
@@ -55,6 +59,7 @@ func (h *Hub) Run(ctx context.Context) {
 					}
 				}
 			}
+
 		case <-ctx.Done():
 			return
 		}
