@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,7 @@ func main() {
 
 	wsHandler := handler.NewWSHandler(hub)
 	authHandler := handler.NewAuthHandler(userRepo, sessionRepo)
-	chatHandler := handler.NewChatHandler(chatRepo)
+	chatHandler := handler.NewChatHandler(chatRepo, hub)
 
 	r := chi.NewRouter()
 
@@ -73,8 +74,21 @@ func main() {
 		})
 	})
 
+	printRoutes(r)
+
 	err := http.ListenAndServe(":8080", r)
 	if err != nil {
 		return
+	}
+}
+
+func printRoutes(r chi.Router) {
+	walkFunc := func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+		fmt.Printf("%-7s %s\n", method, route)
+		return nil
+	}
+
+	if err := chi.Walk(r, walkFunc); err != nil {
+		log.Printf("Walk error: %s\n", err)
 	}
 }

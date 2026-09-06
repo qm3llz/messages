@@ -3,11 +3,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"messages/internal/models"
+	"messages/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -30,10 +32,39 @@ type createMessageRequest struct {
 
 type ChatHandler struct {
 	chatRepo ChatRepo
+	hub      *ws.Hub
 }
 
-func NewChatHandler(chatRepo ChatRepo) *ChatHandler {
-	return &ChatHandler{chatRepo: chatRepo}
+func NewChatHandler(chatRepo ChatRepo, hub *ws.Hub) *ChatHandler {
+	return &ChatHandler{chatRepo: chatRepo, hub: hub}
+}
+
+func (h *ChatHandler) broadcastEvent(ctx context.Context, chatID, requesterID int, eventType string, data any) {
+	members, err := h.chatRepo.GetChatMembers(ctx, chatID, requesterID)
+	if err != nil {
+		slog.Error("broadcast: get chat members", "chatID", chatID, "err", err)
+		return
+	}
+
+	usersIDs := make([]int, len(members))
+	for i, u := range members {
+		usersIDs[i] = u.ID
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"type":    eventType,
+		"chat_id": chatID,
+		"data":    data,
+	})
+	if err != nil {
+		slog.Error("broadcast: marshal payload", "err", err)
+		return
+	}
+
+	h.hub.Broadcast(ws.Event{
+		UserIDs: usersIDs,
+		Payload: payload,
+	})
 }
 
 func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +273,7 @@ func (h *ChatHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 
 	if len(strings.TrimSpace(req.Text)) < 1 {
 		writeResponse(w, http.StatusBadRequest, errorResponse{Code: "bad_message_text", Message: "message text must not be empty or contain only whitespace"})
+		return
 	}
 
 	msg, err := h.chatRepo.CreateMessage(r.Context(), chatID, id, strings.TrimSpace(req.Text))
@@ -249,6 +281,8 @@ func (h *ChatHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+
+	h.broadcastEvent(r.Context(), chatID, id, "create_message", msg)
 
 	writeResponse(w, http.StatusCreated, msg)
 }
@@ -284,6 +318,8 @@ func (h *ChatHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.broadcastEvent(r.Context(), chatID, id, "update_message", msg)
+
 	writeResponse(w, http.StatusOK, msg)
 }
 
@@ -310,6 +346,8 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+
+	h.broadcastEvent(r.Context(), chatID, id, "delete_message", messageID)
 
 	w.WriteHeader(http.StatusOK)
 }
