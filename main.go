@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 
@@ -14,6 +15,7 @@ import (
 	"messages/internal/ws"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 )
 
@@ -43,7 +45,12 @@ func main() {
 	r := chi.NewRouter()
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.Logger)
 		// Публичные
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello, World!")) 
+		}) // TODO: Документацию по апи сюда
+
 		r.Post("/signup", authHandler.SignUp)
 		r.Post("/login", authHandler.Login)
 
@@ -76,9 +83,15 @@ func main() {
 
 	printRoutes(r)
 
-	err := http.ListenAndServe(":8080", r)
+	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		return
+		log.Fatalf("не удалось запустить сервер: %v", err)
+	}
+
+	log.Printf("сервер запущен на %s\n", ln.Addr())
+
+	if err := http.Serve(ln, r); err != nil {
+		log.Fatalf("ошибка сервера: %v", err)
 	}
 }
 
