@@ -3,13 +3,19 @@ package ws
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"github.com/coder/websocket"
 )
 
 func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request, userID int) {
+	domen := os.Getenv("WS_ALLOWED_ORIGINS")
+	if domen == "" {
+		domen = "localhost:*"
+	}// TODO: add split for many patterns
+
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"localhost:*"},
+		OriginPatterns: []string{domen},
 	})
 	if err != nil {
 		return
