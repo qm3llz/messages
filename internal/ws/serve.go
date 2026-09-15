@@ -12,7 +12,7 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request, userID int) {
 	domen := os.Getenv("WS_ALLOWED_ORIGINS")
 	if domen == "" {
 		domen = "localhost:*"
-	}// TODO: add split for many patterns
+	} // TODO: add split for many patterns
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{domen},

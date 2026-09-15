@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"messages/internal/db"
 	"messages/internal/handler"
@@ -16,12 +17,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/joho/godotenv"
 )
 
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, relying on real env vars")
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = ":8080"
 	}
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -45,14 +52,20 @@ func main() {
 	r := chi.NewRouter()
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.ClientIPFromRemoteAddr)
 		r.Use(middleware.Logger)
-		// Публичные
+
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("Hello, World!")) 
+			w.Write([]byte("Hello, World!"))
 		}) // TODO: Документацию по апи сюда
 
-		r.Post("/signup", authHandler.SignUp)
-		r.Post("/login", authHandler.Login)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(10, time.Minute, func(r *http.Request) (string, error) {
+				return httprate.CanonicalizeIP(middleware.GetClientIP(r.Context())), nil
+			}))
+			r.Post("/signup", authHandler.SignUp)
+			r.Post("/login", authHandler.Login)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(authHandler.RequireAuth)
@@ -83,7 +96,7 @@ func main() {
 
 	printRoutes(r)
 
-	ln, err := net.Listen("tcp", ":8080")
+	ln, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("не удалось запустить сервер: %v", err)
 	}
